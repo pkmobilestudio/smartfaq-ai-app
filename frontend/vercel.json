@@ -1,0 +1,8 @@
+{
+  "framework": "vite",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "env": {
+    "REACT_APP_API_URL": "https://your-railway-backend-url.up.railway.app"
+  }
+}
