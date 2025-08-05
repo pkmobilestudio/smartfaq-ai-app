@@ -6,8 +6,26 @@ const { generatePrompt } = require('./utils/prompt');
 const fetch = require('node-fetch');
 require('dotenv').config();
 
-app.use(cors());
+// Configure CORS
+app.use(cors({
+  origin: process.env.SHOPIFY_APP_URL || '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+}));
+
 app.use(express.json());
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Something went wrong!' });
+});
+
+// Health check endpoint
+app.get('/', (req, res) => {
+  res.status(200).json({ status: 'ok', message: 'SmartFAQ.AI API is running' });
+});
 
 // OAuth endpoints
 app.get('/auth', async (req, res) => {
@@ -102,25 +120,48 @@ app.post('/api/save-faqs', async (req, res) => {
 });
 
 app.post('/generate-faqs', async (req, res) => {
-  const { productName, productDescription } = req.body;
+  try {
+    const { productName, productDescription } = req.body;
 
-  const prompt = `You are an eCommerce assistant. Generate 5 helpful FAQ questions and answers for the following product:\\n\\nProduct Name: ${productName}\\nProduct Description: ${productDescription}\\n\\nFAQs should be helpful, concise, and in simple language.`;
+    if (!productName || !productDescription) {
+      return res.status(400).json({ error: 'Product name and description are required' });
+    }
 
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': \`Bearer ${process.env.OPENROUTER_API_KEY}\`
-    },
-    body: JSON.stringify({
-      model: 'openai/gpt-3.5-turbo',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.7
-    })
-  });
+    const prompt = `You are an eCommerce assistant. Generate 5 helpful FAQ questions and answers for the following product:\n\nProduct Name: ${productName}\nProduct Description: ${productDescription}\n\nFAQs should be helpful, concise, and in simple language.`;
 
-  const data = await response.json();
-  res.json({ faqs: data.choices[0].message.content });
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        'HTTP-Referer': process.env.SHOPIFY_APP_URL,
+        'X-Title': 'SmartFAQ.AI'
+      },
+      body: JSON.stringify({
+        model: 'openai/gpt-3.5-turbo',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+        max_tokens: 1000
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      console.error('OpenRouter API error:', error);
+      return res.status(response.status).json({ error: 'Failed to generate FAQs' });
+    }
+
+    const data = await response.json();
+    
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+      return res.status(500).json({ error: 'Invalid response from AI service' });
+    }
+
+    res.json({ faqs: data.choices[0].message.content });
+  } catch (error) {
+    console.error('Error generating FAQs:', error);
+    res.status(500).json({ error: 'Failed to generate FAQs' });
+  }
 });
 
 app.listen(port, () => {

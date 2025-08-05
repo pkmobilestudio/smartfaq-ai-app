@@ -5,8 +5,10 @@ buildCommand = "cd backend && npm install"
 [deploy]
 startCommand = "cd backend && npm start"
 healthcheckPath = "/"
-healthcheckTimeout = 100
+healthcheckTimeout = 300
+healthcheckInterval = 30
 restartPolicyType = "ON_FAILURE"
+numReplicas = 1
 
 [nixpacks]
 nodejs = "18"
